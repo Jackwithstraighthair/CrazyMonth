@@ -1,5 +1,5 @@
 import { ConcertEvent, ScrapingResult } from '@/types/event';
-import { getCurrentMonthRange, formatDate, isSameMonth } from '@/utils/dateHelpers';
+import { getCurrentMonthRange, formatDate } from '@/utils/dateHelpers';
 
 /**
  * 대상 아티스트 리스트
