@@ -1,7 +1,7 @@
 'use client';
 
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, format, isSameMonth } from 'date-fns';
-import { CalendarEvent } from '@/types/event';
+import { CalendarEvent } from '@/types/ticketSale';
 import { isToday } from '@/utils/dateHelpers';
 import CalendarDay from './CalendarDay';
 

@@ -1,8 +1,8 @@
 'use client';
 
-import { CalendarEvent } from '@/types/event';
+import { CalendarEvent } from '@/types/ticketSale';
 import { isToday } from '@/utils/dateHelpers';
-import EventItem from './EventItem';
+import TicketSaleEventItem from './TicketSaleEventItem';
 
 interface CalendarDayProps {
   date: Date;
@@ -43,7 +43,7 @@ export default function CalendarDay({
       </div>
       <div className="space-y-1">
         {visibleEvents.map((event) => (
-          <EventItem key={event.id} event={event} isCompact={true} />
+          <TicketSaleEventItem key={event.id} event={event} isCompact={true} />
         ))}
         {remainingCount > 0 && (
           <div className="text-xs text-gray-500 font-medium px-2 py-1">

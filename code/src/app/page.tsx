@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { scrapeAllSources } from '@/services/scraper';
 import { convertToCalendarEvents, processEvents } from '@/services/dataProcessor';
-import { CalendarEvent } from '@/types/event';
+import { CalendarEvent } from '@/types/ticketSale';
 import ResponsiveContainer from '@/components/Layout/ResponsiveContainer';
 import CalendarHeader from '@/components/Calendar/CalendarHeader';
 import CalendarGrid from '@/components/Calendar/CalendarGrid';
@@ -57,7 +57,7 @@ export default function Home() {
             <CalendarGrid currentDate={currentDate} events={events} />
             {events.length === 0 && (
               <div className="text-center py-12 text-gray-500">
-                <p className="text-lg">이번 달 예매 일정이 없습니다.</p>
+                <p className="text-lg">이번 달 티켓 예매 오픈 일정이 없습니다.</p>
                 <p className="text-sm mt-2">곧 업데이트될 예정입니다.</p>
               </div>
             )}

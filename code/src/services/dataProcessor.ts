@@ -1,4 +1,4 @@
-import { ConcertEvent, CalendarEvent } from '@/types/event';
+import { TicketSaleEvent, CalendarEvent } from '@/types/ticketSale';
 import { combineDateTime, getCurrentMonthRange } from '@/utils/dateHelpers';
 
 /**
@@ -33,27 +33,27 @@ export function getArtistColor(artist: string): string {
 /**
  * 고유 ID 생성
  */
-function generateId(event: ConcertEvent, index: number): string {
-  return `${event.artist}-${event.saleDate}-${event.saleTime}-${index}`;
+function generateId(event: TicketSaleEvent, index: number): string {
+  return `${event.artist}-${event.saleOpenDate}-${event.saleOpenTime}-${index}`;
 }
 
 /**
- * ConcertEvent[]를 react-big-calendar에서 사용할 CalendarEvent[]로 변환
+ * TicketSaleEvent[]를 달력에서 사용할 CalendarEvent[]로 변환
  */
-export function convertToCalendarEvents(concertEvents: ConcertEvent[]): CalendarEvent[] {
-  return concertEvents.map((event, index) => {
-    const start = combineDateTime(event.saleDate, event.saleTime);
+export function convertToCalendarEvents(ticketEvents: TicketSaleEvent[]): CalendarEvent[] {
+  return ticketEvents.map((event, index) => {
+    const start = combineDateTime(event.saleOpenDate, event.saleOpenTime);
     const end = new Date(start.getTime() + 60 * 60 * 1000); // 1시간 후
 
     return {
       id: generateId(event, index),
-      title: event.title || `${event.artist} 예매`,
+      title: event.concertTitle || `${event.artist} 예매 오픈`,
       start,
       end,
       artist: event.artist,
       source: event.source,
       color: getArtistColor(event.artist),
-      url: event.url,
+      url: event.noticeUrl,
     };
   });
 }
@@ -61,10 +61,10 @@ export function convertToCalendarEvents(concertEvents: ConcertEvent[]): Calendar
 /**
  * 현재 월의 이벤트만 필터링
  */
-export function filterCurrentMonth(events: ConcertEvent[]): ConcertEvent[] {
+export function filterCurrentMonth(events: TicketSaleEvent[]): TicketSaleEvent[] {
   const { start, end } = getCurrentMonthRange();
   return events.filter((event) => {
-    const eventDate = new Date(event.saleDate);
+    const eventDate = new Date(event.saleOpenDate);
     return eventDate >= start && eventDate <= end;
   });
 }
@@ -72,10 +72,10 @@ export function filterCurrentMonth(events: ConcertEvent[]): ConcertEvent[] {
 /**
  * 날짜와 시간 순으로 정렬
  */
-export function sortEventsByDateTime(events: ConcertEvent[]): ConcertEvent[] {
+export function sortEventsByDateTime(events: TicketSaleEvent[]): TicketSaleEvent[] {
   return [...events].sort((a, b) => {
-    const dateA = combineDateTime(a.saleDate, a.saleTime);
-    const dateB = combineDateTime(b.saleDate, b.saleTime);
+    const dateA = combineDateTime(a.saleOpenDate, a.saleOpenTime);
+    const dateB = combineDateTime(b.saleOpenDate, b.saleOpenTime);
     return dateA.getTime() - dateB.getTime();
   });
 }
@@ -83,10 +83,10 @@ export function sortEventsByDateTime(events: ConcertEvent[]): ConcertEvent[] {
 /**
  * 중복 이벤트 제거 (같은 아티스트, 날짜, 시간)
  */
-export function removeDuplicates(events: ConcertEvent[]): ConcertEvent[] {
+export function removeDuplicates(events: TicketSaleEvent[]): TicketSaleEvent[] {
   const seen = new Set<string>();
   return events.filter((event) => {
-    const key = `${event.artist}-${event.saleDate}-${event.saleTime}`;
+    const key = `${event.artist}-${event.saleOpenDate}-${event.saleOpenTime}`;
     if (seen.has(key)) {
       return false;
     }
@@ -98,9 +98,41 @@ export function removeDuplicates(events: ConcertEvent[]): ConcertEvent[] {
 /**
  * 데이터 처리 파이프라인: 필터링, 정렬, 중복 제거
  */
-export function processEvents(events: ConcertEvent[]): ConcertEvent[] {
+export function processEvents(events: TicketSaleEvent[]): TicketSaleEvent[] {
   let processed = filterCurrentMonth(events);
   processed = removeDuplicates(processed);
   processed = sortEventsByDateTime(processed);
   return processed;
+}
+
+/**
+ * 티켓 예매 오픈 이벤트 검증
+ */
+export function validateTicketSaleEvent(event: TicketSaleEvent): boolean {
+  // Rule 1: 필수 필드 존재
+  if (!event.artist || !event.saleOpenDate || !event.saleOpenTime) {
+    return false;
+  }
+
+  // Rule 2: 날짜 형식 검증
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(event.saleOpenDate)) {
+    return false;
+  }
+
+  // Rule 3: 시간 형식 검증
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  if (!timeRegex.test(event.saleOpenTime)) {
+    return false;
+  }
+
+  // Rule 4: 날짜 범위 검증 (과거 날짜 제외)
+  const saleDate = new Date(event.saleOpenDate);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (saleDate < today) {
+    return false;
+  }
+
+  return true;
 }
