@@ -11,18 +11,40 @@ export async function GET(request: NextRequest) {
   const monthKey = resolveMonthKey(monthParam);
 
   try {
-    const [melonEvents, interparkEvents] = await Promise.all([
+    // 각 스크래핑을 독립적으로 실행하여 하나가 실패해도 다른 것은 계속 진행
+    const [melonEvents, interparkEvents] = await Promise.allSettled([
       scrapeMelon(monthKey),
       scrapeInterpark(monthKey),
     ]);
-    const all = mergeAndDedupe([...melonEvents, ...interparkEvents], monthKey);
+
+    const melonData = melonEvents.status === 'fulfilled' ? melonEvents.value : [];
+    const interparkData = interparkEvents.status === 'fulfilled' ? interparkEvents.value : [];
+
+    // 디버깅 로그 (개발 환경에서만)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('=== Scraping Results ===');
+      console.log('Melon events:', melonData.length, melonData);
+      console.log('Interpark events:', interparkData.length, interparkData);
+    }
+
+    const allEvents = [...melonData, ...interparkData];
+    const merged = mergeAndDedupe(allEvents, monthKey);
+
+    // 최종 결과 로그
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Merged events:', merged.length, merged);
+    }
 
     return NextResponse.json({
-      data: all,
+      data: merged,
       metadata: {
         month: monthKey,
         lastUpdated: new Date().toISOString(),
-        totalEvents: all.length,
+        totalEvents: merged.length,
+        sources: {
+          melon: melonData.length,
+          interpark: interparkData.length,
+        },
       },
     });
   } catch (e) {
