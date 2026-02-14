@@ -1,104 +1,66 @@
-import { TicketSaleEvent } from '@/types/ticketSale';
+/**
+ * 멜론 티켓 - 티켓 오픈 코너 스크래핑
+ * Vercel 서버리스 환경: Puppeteer 불가 → fetch로 HTML만 수집 (동적 렌더링 페이지는 제한적)
+ * 실제 멜론 티켓이 JS로 렌더링되면 빈 배열 반환 후 인터파크/목 데이터로 보완
+ */
+import type { TicketSaleEvent } from '@/types/ticketSale';
 import { matchArtist } from './artistMatcher';
-import { parseDate, extractDateFromText } from '../parsers/dateParser';
-import { parseTime, extractTimeFromText } from '../parsers/timeParser';
-import { getCurrentMonthRange, formatDate } from '@/utils/dateHelpers';
+import { parseDate } from '../parsers/dateParser';
+import { parseTime } from '../parsers/timeParser';
+import { isInMonth, isPastDate } from '@/utils/dateHelpers';
 
-/**
- * 멜론 티켓 "티켓 오픈" 페이지에서 티켓 예매 오픈 정보 스크래핑
- * 
- * Target URL: https://ticket.melon.com/csoon/index.htm#orderType=0&pageIndex=1&schGcode=GENRE_ALL&schText=&schDt=
- * 
- * 현재는 목 데이터를 반환 (실제 스크래핑은 Puppeteer 등으로 구현 필요)
- */
-export async function scrapeMelonTicketOpen(): Promise<TicketSaleEvent[]> {
+const MELON_CSOON_URL = 'https://ticket.melon.com/csoon/index.htm';
+
+export async function scrapeMelon(monthKey: string): Promise<TicketSaleEvent[]> {
+  const results: TicketSaleEvent[] = [];
   try {
-    // TODO: 실제 웹 스크래핑 구현
-    // Puppeteer를 사용하여 동적 페이지 스크래핑
-    // 
-    // const browser = await puppeteer.launch();
-    // const page = await browser.newPage();
-    // await page.goto('https://ticket.melon.com/csoon/index.htm#orderType=0&pageIndex=1&schGcode=GENRE_ALL&schText=&schDt=');
-    // await page.waitForSelector('.ticket-open-list'); // 실제 셀렉터는 분석 필요
-    // 
-    // const events = await page.evaluate(() => {
-    //   // 실제 DOM 구조에 맞게 수정 필요
-    //   const items = document.querySelectorAll('.ticket-item');
-    //   return Array.from(items).map(item => ({
-    //     title: item.querySelector('.title')?.textContent || '',
-    //     openDate: item.querySelector('.open-date')?.textContent || '',
-    //     openTime: item.querySelector('.open-time')?.textContent || '',
-    //     link: item.querySelector('a')?.href || '',
-    //   }));
-    // });
-    // 
-    // await browser.close();
-
-    // 현재는 목 데이터 반환
-    const mockEvents: TicketSaleEvent[] = [
-      {
-        artist: '세븐틴',
-        saleOpenDate: formatDate(new Date()),
-        saleOpenTime: '20:00',
-        concertTitle: 'SEVENTEEN WORLD TOUR FOLLOW AGAIN SEOUL',
-        source: 'melon',
-        noticeUrl: 'https://ticket.melon.com/performance/index.htm?prodId=209999',
+    const res = await fetch(MELON_CSOON_URL, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-      {
-        artist: '엔시티드림',
-        saleOpenDate: formatDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)), // 7일 후
-        saleOpenTime: '19:00',
-        concertTitle: 'NCT DREAM CONCERT',
-        source: 'melon',
-        noticeUrl: 'https://ticket.melon.com/performance/index.htm?prodId=209998',
-      },
-    ];
-
-    // 현재 월의 데이터만 필터링
-    const { start, end } = getCurrentMonthRange();
-    return mockEvents.filter((event) => {
-      const eventDate = new Date(event.saleOpenDate);
-      return eventDate >= start && eventDate <= end;
+      next: { revalidate: 0 },
     });
-  } catch (error) {
-    console.error('멜론 티켓 오픈 스크래핑 에러:', error);
-    return [];
+    const html = await res.text();
+    // 멜론은 대부분 클라이언트 렌더링이라 HTML에 리스트가 없을 수 있음
+    const artistMatch = matchArtist(html);
+    if (!artistMatch) {
+      // HTML 내에 날짜/시간 패턴으로 추출 시도
+      const dateMatch = html.match(/(\d{4})-(\d{2})-(\d{2})/g);
+      const timeMatch = html.match(/(\d{1,2}):(\d{2})/g);
+      if (dateMatch && timeMatch) {
+        for (let i = 0; i < Math.min(dateMatch.length, 5); i++) {
+          const d = dateMatch[i];
+          const t = timeMatch[i] || '20:00';
+          if (d && isInMonth(d, monthKey) && !isPastDate(d)) {
+            const artist = matchArtist(html) || '공연';
+            if (artist && artist !== '공연') {
+              results.push({
+                artist,
+                saleOpenDate: d,
+                saleOpenTime: t.length === 4 ? `0${t}` : t,
+                source: 'melon',
+                noticeUrl: MELON_CSOON_URL,
+              });
+            }
+          }
+        }
+      }
+      return results;
+    }
+    const parsedDate = parseDate(html);
+    const parsedTime = parseTime(html) || '20:00';
+    if (parsedDate && isInMonth(parsedDate, monthKey) && !isPastDate(parsedDate)) {
+      results.push({
+        artist: artistMatch,
+        saleOpenDate: parsedDate,
+        saleOpenTime: parsedTime,
+        source: 'melon',
+        noticeUrl: MELON_CSOON_URL,
+      });
+    }
+  } catch {
+    // 네트워크/파싱 실패 시 빈 배열
   }
-}
-
-/**
- * 스크래핑된 원시 데이터를 TicketSaleEvent로 변환
- */
-function parseMelonEvent(rawData: {
-  title: string;
-  openDate: string;
-  openTime: string;
-  link?: string;
-}): TicketSaleEvent | null {
-  // 아티스트 매칭
-  const artist = matchArtist(rawData.title);
-  if (!artist) {
-    return null;
-  }
-
-  // 날짜 파싱
-  const saleOpenDate = parseDate(rawData.openDate) || extractDateFromText([rawData.openDate, rawData.title]);
-  if (!saleOpenDate) {
-    return null;
-  }
-
-  // 시간 파싱
-  const saleOpenTime = parseTime(rawData.openTime) || extractTimeFromText([rawData.openTime, rawData.title]);
-  if (!saleOpenTime) {
-    return null;
-  }
-
-  return {
-    artist,
-    saleOpenDate,
-    saleOpenTime,
-    concertTitle: rawData.title,
-    source: 'melon',
-    noticeUrl: rawData.link,
-  };
+  return results;
 }

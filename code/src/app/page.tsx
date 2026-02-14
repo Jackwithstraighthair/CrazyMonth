@@ -1,69 +1,103 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { scrapeAllSources } from '@/services/scraper';
-import { convertToCalendarEvents, processEvents } from '@/services/dataProcessor';
-import { CalendarEvent } from '@/types/ticketSale';
+import { useEffect, useState } from 'react';
+import type { TicketSaleEvent } from '@/types/ticketSale';
+import type { ScrapeResponse } from '@/types/ticketSale';
+import { getCurrentMonthKey } from '@/utils/dateHelpers';
+import { getMonthRange } from '@/utils/dateHelpers';
 import ResponsiveContainer from '@/components/Layout/ResponsiveContainer';
 import CalendarHeader from '@/components/Calendar/CalendarHeader';
 import CalendarGrid from '@/components/Calendar/CalendarGrid';
 
 export default function Home() {
-  const [currentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [data, setData] = useState<ScrapeResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const monthKey = getCurrentMonthKey();
+  const { year, month } = getMonthRange(monthKey);
 
   useEffect(() => {
-    async function fetchEvents() {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const result = await scrapeAllSources();
-        const processedEvents = processEvents(result.events);
-        const calendarEvents = convertToCalendarEvents(processedEvents);
-        setEvents(calendarEvents);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('데이터를 불러오는 중 오류가 발생했습니다.'));
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/scrape?month=${monthKey}`)
+      .then((res) => res.json())
+      .then((json: ScrapeResponse & { error?: string }) => {
+        if (cancelled) return;
+        setData({
+          data: json.data ?? [],
+          metadata: json.metadata ?? {
+            month: monthKey,
+            lastUpdated: new Date().toISOString(),
+            totalEvents: 0,
+          },
+        });
+        if (json.error) setError(json.error);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError('일정을 불러오지 못했습니다.');
+          setData({
+            data: [],
+            metadata: {
+              month: monthKey,
+              lastUpdated: new Date().toISOString(),
+              totalEvents: 0,
+            },
+          });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [monthKey]);
 
-    fetchEvents();
-  }, []);
+  const events: TicketSaleEvent[] = data?.data ?? [];
 
   return (
-    <ResponsiveContainer>
-      <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-        <CalendarHeader currentDate={currentDate} />
-        
-        {isLoading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-            <span className="ml-4 text-gray-600">데이터를 불러오는 중...</span>
+    <ResponsiveContainer className="py-6 md:py-10">
+      <main role="main">
+        <div className="relative">
+          {/* PRD 2.2.3: 배경 큰 월 숫자 */}
+          <div
+            className="absolute inset-0 flex items-center justify-center pointer-events-none select-none"
+            aria-hidden
+          >
+            <span className="text-[min(20vw,180px)] font-bold text-gray-200 dark:text-gray-700 opacity-10">
+              {month}
+            </span>
           </div>
-        )}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-800 font-semibold">오류 발생</p>
-            <p className="text-red-600 text-sm mt-1">{error.message}</p>
-          </div>
-        )}
+          <CalendarHeader year={year} month={month} />
 
-        {!isLoading && !error && (
-          <>
-            <CalendarGrid currentDate={currentDate} events={events} />
-            {events.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <p className="text-lg">이번 달 티켓 예매 오픈 일정이 없습니다.</p>
-                <p className="text-sm mt-2">곧 업데이트될 예정입니다.</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500" role="status" aria-live="polite">
+              <div className="w-10 h-10 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mb-4" />
+              <p>일정을 불러오는 중...</p>
+            </div>
+          )}
+
+          {!loading && (
+            <>
+              {error && (
+                <div className="mb-4 p-3 rounded-lg bg-amber-50 text-amber-800 text-sm" role="alert">
+                  {error}
+                </div>
+              )}
+              <CalendarGrid monthKey={monthKey} events={events} />
+              {data?.metadata?.lastUpdated && (
+                <p className="text-xs text-gray-400 mt-4 text-center">
+                  마지막 업데이트: {new Date(data.metadata.lastUpdated).toLocaleString('ko-KR')}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </main>
     </ResponsiveContainer>
   );
 }

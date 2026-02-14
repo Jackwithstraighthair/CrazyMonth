@@ -1,54 +1,55 @@
 'use client';
 
-import { CalendarEvent } from '@/types/ticketSale';
-import { isToday } from '@/utils/dateHelpers';
+import type { TicketSaleEvent } from '@/types/ticketSale';
 import TicketSaleEventItem from './TicketSaleEventItem';
+import { getTodayKey } from '@/utils/dateHelpers';
 
-interface CalendarDayProps {
-  date: Date;
-  events: CalendarEvent[];
-  isCurrentMonth: boolean;
-  isToday: boolean;
-}
-
-const MAX_VISIBLE_EVENTS = 3;
+type CalendarDayProps = {
+  dateKey: string | null; // YYYY-MM-DD or null for empty cell
+  dayOfMonth: number | null;
+  events: TicketSaleEvent[];
+  maxVisible?: number;
+};
 
 export default function CalendarDay({
-  date,
+  dateKey,
+  dayOfMonth,
   events,
-  isCurrentMonth,
-  isToday: isTodayProp,
+  maxVisible = 3,
 }: CalendarDayProps) {
-  const dayNumber = date.getDate();
-  const isTodayDate = isTodayProp || isToday(date);
-  const visibleEvents = events.slice(0, MAX_VISIBLE_EVENTS);
-  const remainingCount = events.length - MAX_VISIBLE_EVENTS;
+  const isToday = dateKey === getTodayKey();
+  const isEmpty = dateKey === null;
+
+  if (isEmpty) {
+    return <div className="min-h-[80px] md:min-h-[100px] bg-gray-50/50 border border-gray-100" />;
+  }
+
+  const visible = events.slice(0, maxVisible);
+  const restCount = events.length - maxVisible;
 
   return (
     <div
-      className={`
-        min-h-24 md:min-h-32 border border-gray-200 p-2
-        ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 opacity-40'}
-        ${isTodayDate ? 'bg-blue-50' : ''}
-      `}
+      className={`min-h-[80px] md:min-h-[100px] border border-gray-200 bg-white p-1 md:p-2 flex flex-col ${
+        isToday ? 'ring-2 ring-blue-400 ring-inset' : ''
+      }`}
+      role="gridcell"
+      aria-label={dateKey ? `${dateKey} ${events.length}개 이벤트` : '빈 날짜'}
     >
-      <div
-        className={`
-          text-sm font-medium mb-1
-          ${isTodayDate ? 'flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white' : ''}
-          ${!isCurrentMonth ? 'text-gray-400' : 'text-gray-700'}
-        `}
-      >
-        {dayNumber}
+      <div className="text-right">
+        <span
+          className={`inline-flex items-center justify-center w-7 h-7 text-sm rounded-full ${
+            isToday ? 'bg-blue-600 text-white font-semibold' : 'text-gray-700'
+          }`}
+        >
+          {dayOfMonth}
+        </span>
       </div>
-      <div className="space-y-1">
-        {visibleEvents.map((event) => (
-          <TicketSaleEventItem key={event.id} event={event} isCompact={true} />
+      <div className="flex-1 space-y-1 overflow-hidden">
+        {visible.map((evt, i) => (
+          <TicketSaleEventItem key={`${evt.artist}-${evt.saleOpenDate}-${evt.saleOpenTime}-${i}`} event={evt} />
         ))}
-        {remainingCount > 0 && (
-          <div className="text-xs text-gray-500 font-medium px-2 py-1">
-            +{remainingCount}개 더보기
-          </div>
+        {restCount > 0 && (
+          <div className="text-xs text-gray-500 font-medium pl-1">+{restCount}개</div>
         )}
       </div>
     </div>
